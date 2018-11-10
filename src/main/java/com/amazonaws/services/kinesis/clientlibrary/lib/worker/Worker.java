@@ -31,47 +31,33 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Consumer;
 
-import org.apache.commons.lang3.StringUtils;
+import com.amazonaws.services.kinesis.clientlibrary.proxies.IKinesisProxy;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-import com.amazonaws.AmazonWebServiceClient;
-import com.amazonaws.ClientConfiguration;
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.client.builder.AwsClientBuilder;
+import com.amazonaws.regions.Region;
 import com.amazonaws.regions.RegionUtils;
-import com.amazonaws.regions.Regions;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatch;
 import com.amazonaws.services.cloudwatch.AmazonCloudWatchClient;
-import com.amazonaws.services.cloudwatch.AmazonCloudWatchClientBuilder;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.kinesis.AmazonKinesis;
 import com.amazonaws.services.kinesis.AmazonKinesisClient;
-import com.amazonaws.services.kinesis.AmazonKinesisClientBuilder;
 import com.amazonaws.services.kinesis.clientlibrary.interfaces.ICheckpoint;
 import com.amazonaws.services.kinesis.clientlibrary.interfaces.v2.IRecordProcessor;
 import com.amazonaws.services.kinesis.clientlibrary.interfaces.v2.IRecordProcessorFactory;
 import com.amazonaws.services.kinesis.clientlibrary.interfaces.v2.IShutdownNotificationAware;
-import com.amazonaws.services.kinesis.clientlibrary.proxies.IKinesisProxy;
-import com.amazonaws.services.kinesis.clientlibrary.proxies.KinesisProxy;
+import com.amazonaws.services.kinesis.clientlibrary.proxies.KinesisProxyFactory;
 import com.amazonaws.services.kinesis.leases.exceptions.LeasingException;
 import com.amazonaws.services.kinesis.leases.impl.KinesisClientLease;
 import com.amazonaws.services.kinesis.leases.impl.KinesisClientLeaseManager;
-import com.amazonaws.services.kinesis.leases.interfaces.ILeaseManager;
 import com.amazonaws.services.kinesis.metrics.impl.CWMetricsFactory;
 import com.amazonaws.services.kinesis.metrics.impl.NullMetricsFactory;
 import com.amazonaws.services.kinesis.metrics.interfaces.IMetricsFactory;
 import com.amazonaws.services.kinesis.metrics.interfaces.MetricsLevel;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-
-import lombok.NonNull;
-import lombok.Setter;
-import lombok.experimental.Accessors;
 
 /**
  * Worker is the high level class that Kinesis applications use to start processing data. It initializes and oversees
@@ -83,7 +69,6 @@ public class Worker implements Runnable {
     private static final Log LOG = LogFactory.getLog(Worker.class);
 
     private static final int MAX_INITIALIZATION_ATTEMPTS = 20;
-    private static final WorkerStateChangeListener DEFAULT_WORKER_STATE_CHANGE_LISTENER = new NoOpWorkerStateChangeListener();
 
     private WorkerLog wlog = new WorkerLog();
 
@@ -106,6 +91,7 @@ public class Worker implements Runnable {
     private final Optional<Integer> retryGetRecordsInSeconds;
     private final Optional<Integer> maxGetRecordsThreadPool;
 
+    // private final KinesisClientLeaseManager leaseManager;
     private final KinesisClientLibLeaseCoordinator leaseCoordinator;
     private final ShardSyncTaskManager controlServer;
 
@@ -131,20 +117,14 @@ public class Worker implements Runnable {
     @VisibleForTesting
     protected GracefulShutdownCoordinator gracefulShutdownCoordinator = new GracefulShutdownCoordinator();
 
-    private WorkerStateChangeListener workerStateChangeListener;
-
     /**
      * Constructor.
-     *
-     * @deprecated The access to this constructor will be changed in a future release. The recommended way to create
-     * a Worker is to use {@link Builder}
      *
      * @param recordProcessorFactory
      *            Used to get record processor instances for processing data from shards
      * @param config
      *            Kinesis Client Library configuration
      */
-    @Deprecated
     public Worker(
             com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
             KinesisClientLibConfiguration config) {
@@ -154,9 +134,6 @@ public class Worker implements Runnable {
     /**
      * Constructor.
      *
-     * @deprecated The access to this constructor will be changed in a future release. The recommended way to create
-     * a Worker is to use {@link Builder}
-     *
      * @param recordProcessorFactory
      *            Used to get record processor instances for processing data from shards
      * @param config
@@ -164,7 +141,6 @@ public class Worker implements Runnable {
      * @param execService
      *            ExecutorService to use for processing records (support for multi-threaded consumption)
      */
-    @Deprecated
     public Worker(
             com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
             KinesisClientLibConfiguration config, ExecutorService execService) {
@@ -178,9 +154,6 @@ public class Worker implements Runnable {
     }
 
     /**
-     * @deprecated The access to this constructor will be changed in a future release. The recommended way to create
-     * a Worker is to use {@link Builder}
-     *
      * @param recordProcessorFactory
      *            Used to get record processor instances for processing data from shards
      * @param config
@@ -188,7 +161,6 @@ public class Worker implements Runnable {
      * @param metricsFactory
      *            Metrics factory used to emit metrics
      */
-    @Deprecated
     public Worker(
             com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
             KinesisClientLibConfiguration config, IMetricsFactory metricsFactory) {
@@ -196,9 +168,6 @@ public class Worker implements Runnable {
     }
 
     /**
-     * @deprecated The access to this constructor will be changed in a future release. The recommended way to create
-     * a Worker is to use {@link Builder}
-     *
      * @param recordProcessorFactory
      *            Used to get record processor instances for processing data from shards
      * @param config
@@ -208,7 +177,6 @@ public class Worker implements Runnable {
      * @param execService
      *            ExecutorService to use for processing records (support for multi-threaded consumption)
      */
-    @Deprecated
     public Worker(
             com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
             KinesisClientLibConfiguration config, IMetricsFactory metricsFactory, ExecutorService execService) {
@@ -220,9 +188,6 @@ public class Worker implements Runnable {
     }
 
     /**
-     * @deprecated The access to this constructor will be changed in a future release. The recommended way to create
-     * a Worker is to use {@link Builder}
-     *
      * @param recordProcessorFactory
      *            Used to get record processor instances for processing data from shards
      * @param config
@@ -234,7 +199,6 @@ public class Worker implements Runnable {
      * @param cloudWatchClient
      *            CloudWatch Client for publishing metrics
      */
-    @Deprecated
     public Worker(
             com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
             KinesisClientLibConfiguration config, AmazonKinesis kinesisClient, AmazonDynamoDB dynamoDBClient,
@@ -243,9 +207,6 @@ public class Worker implements Runnable {
     }
 
     /**
-     * @deprecated The access to this constructor will be changed in a future release. The recommended way to create
-     * a Worker is to use {@link Builder}
-     *
      * @param recordProcessorFactory
      *            Used to get record processor instances for processing data from shards
      * @param config
@@ -259,7 +220,6 @@ public class Worker implements Runnable {
      * @param execService
      *            ExecutorService to use for processing records (support for multi-threaded consumption)
      */
-    @Deprecated
     public Worker(
             com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
             KinesisClientLibConfiguration config, AmazonKinesis kinesisClient, AmazonDynamoDB dynamoDBClient,
@@ -268,70 +228,7 @@ public class Worker implements Runnable {
                 execService);
     }
 
-    // Backwards compatible constructors
     /**
-     * This constructor is for binary compatibility with code compiled against version of the KCL that only have
-     * constructors taking "Client" objects.
-     *
-     * @deprecated The access to this constructor will be changed in a future release. The recommended way to create
-     * a Worker is to use {@link Builder}
-     *
-     * @param recordProcessorFactory
-     *            Used to get record processor instances for processing data from shards
-     * @param config
-     *            Kinesis Client Library configuration
-     * @param kinesisClient
-     *            Kinesis Client used for fetching data
-     * @param dynamoDBClient
-     *            DynamoDB client used for checkpoints and tracking leases
-     * @param cloudWatchClient
-     *            CloudWatch Client for publishing metrics
-     */
-    @Deprecated
-    public Worker(
-            com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
-            KinesisClientLibConfiguration config, AmazonKinesisClient kinesisClient,
-            AmazonDynamoDBClient dynamoDBClient, AmazonCloudWatchClient cloudWatchClient) {
-        this(recordProcessorFactory, config, (AmazonKinesis) kinesisClient, (AmazonDynamoDB) dynamoDBClient,
-                (AmazonCloudWatch) cloudWatchClient);
-    }
-
-    /**
-     * This constructor is for binary compatibility with code compiled against version of the KCL that only have
-     * constructors taking "Client" objects.
-     *
-     * @deprecated The access to this constructor will be changed in a future release. The recommended way to create
-     * a Worker is to use {@link Builder}
-     *
-     * @param recordProcessorFactory
-     *            Used to get record processor instances for processing data from shards
-     * @param config
-     *            Kinesis Client Library configuration
-     * @param kinesisClient
-     *            Kinesis Client used for fetching data
-     * @param dynamoDBClient
-     *            DynamoDB client used for checkpoints and tracking leases
-     * @param cloudWatchClient
-     *            CloudWatch Client for publishing metrics
-     * @param execService
-     *            ExecutorService to use for processing records (support for multi-threaded consumption)
-     */
-    @Deprecated
-    public Worker(
-            com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
-            KinesisClientLibConfiguration config, AmazonKinesisClient kinesisClient,
-            AmazonDynamoDBClient dynamoDBClient, AmazonCloudWatchClient cloudWatchClient, ExecutorService execService) {
-        this(recordProcessorFactory, config, (AmazonKinesis) kinesisClient, (AmazonDynamoDB) dynamoDBClient,
-                (AmazonCloudWatch) cloudWatchClient, execService);
-    }
-
-    /**
-     * This constructor is for binary compatibility with code compiled against version of the KCL that only have
-     * constructors taking "Client" objects.
-     *
-     * @deprecated The access to this constructor will be changed in a future release. The recommended way to create
-     * a Worker is to use {@link Builder}
-     *
      * @param recordProcessorFactory
      *            Used to get record processor instances for processing data from shards
      * @param config
@@ -345,33 +242,6 @@ public class Worker implements Runnable {
      * @param execService
      *            ExecutorService to use for processing records (support for multi-threaded consumption)
      */
-    @Deprecated
-    public Worker(
-            com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
-            KinesisClientLibConfiguration config, AmazonKinesisClient kinesisClient,
-            AmazonDynamoDBClient dynamoDBClient, IMetricsFactory metricsFactory, ExecutorService execService) {
-        this(recordProcessorFactory, config, (AmazonKinesis) kinesisClient, (AmazonDynamoDB) dynamoDBClient,
-                metricsFactory, execService);
-    }
-
-    /**
-     * @deprecated The access to this constructor will be changed in a future release. The recommended way to create
-     * a Worker is to use {@link Builder}
-     *
-     * @param recordProcessorFactory
-     *            Used to get record processor instances for processing data from shards
-     * @param config
-     *            Kinesis Client Library configuration
-     * @param kinesisClient
-     *            Kinesis Client used for fetching data
-     * @param dynamoDBClient
-     *            DynamoDB client used for checkpoints and tracking leases
-     * @param metricsFactory
-     *            Metrics factory used to emit metrics
-     * @param execService
-     *            ExecutorService to use for processing records (support for multi-threaded consumption)
-     */
-    @Deprecated
     public Worker(
             com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
             KinesisClientLibConfiguration config, AmazonKinesis kinesisClient, AmazonDynamoDB dynamoDBClient,
@@ -379,7 +249,8 @@ public class Worker implements Runnable {
         this(config.getApplicationName(), new V1ToV2RecordProcessorFactoryAdapter(recordProcessorFactory),
                 config,
                 new StreamConfig(
-                        new KinesisProxy(config, kinesisClient),
+                        new KinesisProxyFactory(config.getKinesisCredentialsProvider(), kinesisClient)
+                                .getProxy(config.getStreamName()),
                         config.getMaxRecords(), config.getIdleTimeBetweenReadsInMillis(),
                         config.shouldCallProcessRecordsEvenForEmptyRecordList(),
                         config.shouldValidateSequenceNumberBeforeCheckpointing(),
@@ -404,21 +275,32 @@ public class Worker implements Runnable {
                 config.getSkipShardSyncAtWorkerInitializationIfLeasesExist(),
                 config.getShardPrioritizationStrategy(),
                 config.getRetryGetRecordsInSeconds(),
-                config.getMaxGetRecordsThreadPool(),
-                DEFAULT_WORKER_STATE_CHANGE_LISTENER);
+                config.getMaxGetRecordsThreadPool());
 
         // If a region name was explicitly specified, use it as the region for Amazon Kinesis and Amazon DynamoDB.
         if (config.getRegionName() != null) {
-            setField(kinesisClient, "region", kinesisClient::setRegion, RegionUtils.getRegion(config.getRegionName()));
-            setField(dynamoDBClient, "region", dynamoDBClient::setRegion, RegionUtils.getRegion(config.getRegionName()));
+            Region region = RegionUtils.getRegion(config.getRegionName());
+            kinesisClient.setRegion(region);
+            LOG.debug("The region of Amazon Kinesis client has been set to " + config.getRegionName());
+            dynamoDBClient.setRegion(region);
+            LOG.debug("The region of Amazon DynamoDB client has been set to " + config.getRegionName());
         }
         // If a dynamoDB endpoint was explicitly specified, use it to set the DynamoDB endpoint.
         if (config.getDynamoDBEndpoint() != null) {
-            setField(dynamoDBClient, "endpoint", dynamoDBClient::setEndpoint, config.getDynamoDBEndpoint());
+            dynamoDBClient.setEndpoint(config.getDynamoDBEndpoint());
+            LOG.debug("The endpoint of Amazon DynamoDB client has been set to " + config.getDynamoDBEndpoint());
         }
         // If a kinesis endpoint was explicitly specified, use it to set the region of kinesis.
         if (config.getKinesisEndpoint() != null) {
-            setField(kinesisClient, "endpoint", kinesisClient::setEndpoint, config.getKinesisEndpoint());
+            kinesisClient.setEndpoint(config.getKinesisEndpoint());
+            if (config.getRegionName() != null) {
+                LOG.warn("Received configuration for both region name as " + config.getRegionName()
+                        + ", and Amazon Kinesis endpoint as " + config.getKinesisEndpoint()
+                        + ". Amazon Kinesis endpoint will overwrite region name.");
+                LOG.debug("The region of Amazon Kinesis client has been overwritten to " + config.getKinesisEndpoint());
+            } else {
+                LOG.debug("The region of Amazon Kinesis client has been set to " + config.getKinesisEndpoint());
+            }
         }
     }
 
@@ -465,7 +347,7 @@ public class Worker implements Runnable {
         this(applicationName, recordProcessorFactory, config, streamConfig, initialPositionInStream, parentShardPollIntervalMillis,
                 shardSyncIdleTimeMillis, cleanupLeasesUponShardCompletion, checkpoint, leaseCoordinator, execService,
                 metricsFactory, taskBackoffTimeMillis, failoverTimeMillis, skipShardSyncAtWorkerInitializationIfLeasesExist,
-                shardPrioritization, Optional.empty(), Optional.empty(), DEFAULT_WORKER_STATE_CHANGE_LISTENER);
+                shardPrioritization, Optional.empty(), Optional.empty());
     }
 
     /**
@@ -512,7 +394,7 @@ public class Worker implements Runnable {
            KinesisClientLibLeaseCoordinator leaseCoordinator, ExecutorService execService,
            IMetricsFactory metricsFactory, long taskBackoffTimeMillis, long failoverTimeMillis,
            boolean skipShardSyncAtWorkerInitializationIfLeasesExist, ShardPrioritization shardPrioritization,
-           Optional<Integer> retryGetRecordsInSeconds, Optional<Integer> maxGetRecordsThreadPool, WorkerStateChangeListener workerStateChangeListener) {
+           Optional<Integer> retryGetRecordsInSeconds, Optional<Integer> maxGetRecordsThreadPool) {
         this.applicationName = applicationName;
         this.recordProcessorFactory = recordProcessorFactory;
         this.config = config;
@@ -534,8 +416,6 @@ public class Worker implements Runnable {
         this.shardPrioritization = shardPrioritization;
         this.retryGetRecordsInSeconds = retryGetRecordsInSeconds;
         this.maxGetRecordsThreadPool = maxGetRecordsThreadPool;
-        this.workerStateChangeListener = workerStateChangeListener;
-        workerStateChangeListener.onWorkerStateChange(WorkerStateChangeListener.WorkerState.CREATED);
     }
 
     /**
@@ -543,13 +423,6 @@ public class Worker implements Runnable {
      */
     public String getApplicationName() {
         return applicationName;
-    }
-
-    /**
-     * @return the leaseCoordinator
-     */
-    KinesisClientLibLeaseCoordinator getLeaseCoordinator(){
-        return leaseCoordinator;
     }
 
     /**
@@ -613,7 +486,6 @@ public class Worker implements Runnable {
     }
 
     private void initialize() {
-        workerStateChangeListener.onWorkerStateChange(WorkerStateChangeListener.WorkerState.INITIALIZING);
         boolean isDone = false;
         Exception lastException = null;
 
@@ -663,7 +535,6 @@ public class Worker implements Runnable {
         if (!isDone) {
             throw new RuntimeException(lastException);
         }
-        workerStateChangeListener.onWorkerStateChange(WorkerStateChangeListener.WorkerState.STARTED);
     }
 
     /**
@@ -714,10 +585,10 @@ public class Worker implements Runnable {
 
     /**
      * Starts the requestedShutdown process, and returns a future that can be used to track the process.
-     *
+     * 
      * This is deprecated in favor of {@link #startGracefulShutdown()}, which returns a more complete future, and
      * indicates the process behavior
-     *
+     * 
      * @return a future that will be set once shutdown is completed.
      */
     @Deprecated
@@ -761,7 +632,7 @@ public class Worker implements Runnable {
      * Requests a graceful shutdown of the worker, notifying record processors, that implement
      * {@link IShutdownNotificationAware}, of the impending shutdown. This gives the record processor a final chance to
      * checkpoint.
-     *
+     * 
      * This will only create a single shutdown future. Additional attempts to start a graceful shutdown will return the
      * previous future.
      *
@@ -876,10 +747,6 @@ public class Worker implements Runnable {
         return shardInfoShardConsumerMap;
     }
 
-    WorkerStateChangeListener getWorkerStateChangeListener() {
-        return workerStateChangeListener;
-    }
-
     /**
      * Signals worker to shutdown. Worker will try initiating shutdown of all record processors. Note that if executor
      * services were passed to the worker by the user, worker will not attempt to shutdown those resources.
@@ -910,7 +777,6 @@ public class Worker implements Runnable {
         // Lost leases will force Worker to begin shutdown process for all shard consumers in
         // Worker.run().
         leaseCoordinator.stop();
-        workerStateChangeListener.onWorkerStateChange(WorkerStateChangeListener.WorkerState.SHUT_DOWN);
     }
 
     /**
@@ -933,7 +799,7 @@ public class Worker implements Runnable {
     /**
      * Returns whether worker can shutdown immediately. Note that this method is called from Worker's {{@link #run()}
      * method before every loop run, so method must do minimum amount of work to not impact shard processing timings.
-     *
+     * 
      * @return Whether worker should shutdown immediately.
      */
     @VisibleForTesting
@@ -1057,6 +923,80 @@ public class Worker implements Runnable {
         }
     }
 
+    // Backwards compatible constructors
+    /**
+     * This constructor is for binary compatibility with code compiled against version of the KCL that only have
+     * constructors taking "Client" objects.
+     *
+     * @param recordProcessorFactory
+     *            Used to get record processor instances for processing data from shards
+     * @param config
+     *            Kinesis Client Library configuration
+     * @param kinesisClient
+     *            Kinesis Client used for fetching data
+     * @param dynamoDBClient
+     *            DynamoDB client used for checkpoints and tracking leases
+     * @param cloudWatchClient
+     *            CloudWatch Client for publishing metrics
+     */
+    public Worker(
+            com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
+            KinesisClientLibConfiguration config, AmazonKinesisClient kinesisClient,
+            AmazonDynamoDBClient dynamoDBClient, AmazonCloudWatchClient cloudWatchClient) {
+        this(recordProcessorFactory, config, (AmazonKinesis) kinesisClient, (AmazonDynamoDB) dynamoDBClient,
+                (AmazonCloudWatch) cloudWatchClient);
+    }
+
+    /**
+     * This constructor is for binary compatibility with code compiled against version of the KCL that only have
+     * constructors taking "Client" objects.
+     *
+     * @param recordProcessorFactory
+     *            Used to get record processor instances for processing data from shards
+     * @param config
+     *            Kinesis Client Library configuration
+     * @param kinesisClient
+     *            Kinesis Client used for fetching data
+     * @param dynamoDBClient
+     *            DynamoDB client used for checkpoints and tracking leases
+     * @param cloudWatchClient
+     *            CloudWatch Client for publishing metrics
+     * @param execService
+     *            ExecutorService to use for processing records (support for multi-threaded consumption)
+     */
+    public Worker(
+            com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
+            KinesisClientLibConfiguration config, AmazonKinesisClient kinesisClient,
+            AmazonDynamoDBClient dynamoDBClient, AmazonCloudWatchClient cloudWatchClient, ExecutorService execService) {
+        this(recordProcessorFactory, config, (AmazonKinesis) kinesisClient, (AmazonDynamoDB) dynamoDBClient,
+                (AmazonCloudWatch) cloudWatchClient, execService);
+    }
+
+    /**
+     * This constructor is for binary compatibility with code compiled against version of the KCL that only have
+     * constructors taking "Client" objects.
+     *
+     * @param recordProcessorFactory
+     *            Used to get record processor instances for processing data from shards
+     * @param config
+     *            Kinesis Client Library configuration
+     * @param kinesisClient
+     *            Kinesis Client used for fetching data
+     * @param dynamoDBClient
+     *            DynamoDB client used for checkpoints and tracking leases
+     * @param metricsFactory
+     *            Metrics factory used to emit metrics
+     * @param execService
+     *            ExecutorService to use for processing records (support for multi-threaded consumption)
+     */
+    public Worker(
+            com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory recordProcessorFactory,
+            KinesisClientLibConfiguration config, AmazonKinesisClient kinesisClient,
+            AmazonDynamoDBClient dynamoDBClient, IMetricsFactory metricsFactory, ExecutorService execService) {
+        this(recordProcessorFactory, config, (AmazonKinesis) kinesisClient, (AmazonDynamoDB) dynamoDBClient,
+                metricsFactory, execService);
+    }
+
     @VisibleForTesting
     StreamConfig getStreamConfig() {
         return streamConfig;
@@ -1064,7 +1004,7 @@ public class Worker implements Runnable {
 
     /**
      * Given configuration, returns appropriate metrics factory.
-     *
+     * 
      * @param cloudWatchClient
      *            Amazon CloudWatch client
      * @param config
@@ -1078,7 +1018,9 @@ public class Worker implements Runnable {
             metricsFactory = new NullMetricsFactory();
         } else {
             if (config.getRegionName() != null) {
-                setField(cloudWatchClient, "region", cloudWatchClient::setRegion, RegionUtils.getRegion(config.getRegionName()));
+                Region region = RegionUtils.getRegion(config.getRegionName());
+                cloudWatchClient.setRegion(region);
+                LOG.debug("The region of Amazon CloudWatch client has been set to " + config.getRegionName());
             }
             metricsFactory = new WorkerCWMetricsFactory(cloudWatchClient, config.getApplicationName(),
                     config.getMetricsBufferTimeMillis(), config.getMetricsMaxQueueSize(), config.getMetricsLevel(),
@@ -1089,21 +1031,12 @@ public class Worker implements Runnable {
 
     /**
      * Returns default executor service that should be used by the worker.
-     *
+     * 
      * @return Default executor service that should be used by the worker.
      */
     private static ExecutorService getExecutorService() {
         ThreadFactory threadFactory = new ThreadFactoryBuilder().setNameFormat("RecordProcessor-%04d").build();
         return new WorkerThreadPoolExecutor(threadFactory);
-    }
-
-    private static <S, T> void setField(final S source, final String field, final Consumer<T> t, T value) {
-        try {
-            t.accept(value);
-        } catch (UnsupportedOperationException e) {
-            LOG.debug("Exception thrown while trying to set " + field + ", indicating that "
-                    + source.getClass().getSimpleName() + "is immutable.", e);
-        }
     }
 
     /**
@@ -1138,40 +1071,20 @@ public class Worker implements Runnable {
     public static class Builder {
 
         private IRecordProcessorFactory recordProcessorFactory;
-        @Setter @Accessors(fluent = true)
+        private RecordsFetcherFactory recordsFetcherFactory;
         private KinesisClientLibConfiguration config;
-        @Setter @Accessors(fluent = true)
         private AmazonKinesis kinesisClient;
-        @Setter @Accessors(fluent = true)
         private AmazonDynamoDB dynamoDBClient;
-        @Setter @Accessors(fluent = true)
         private AmazonCloudWatch cloudWatchClient;
-        @Setter @Accessors(fluent = true)
         private IMetricsFactory metricsFactory;
-        @Setter @Accessors(fluent = true)
-        private ILeaseManager<KinesisClientLease> leaseManager;
-        @Setter @Accessors(fluent = true)
         private ExecutorService execService;
-        @Setter @Accessors(fluent = true)
         private ShardPrioritization shardPrioritization;
-        @Setter @Accessors(fluent = true)
         private IKinesisProxy kinesisProxy;
-        @Setter @Accessors(fluent = true)
-        private WorkerStateChangeListener workerStateChangeListener;
 
-        @VisibleForTesting
-        AmazonKinesis getKinesisClient() {
-            return kinesisClient;
-        }
-
-        @VisibleForTesting
-        AmazonDynamoDB getDynamoDBClient() {
-            return dynamoDBClient;
-        }
-
-        @VisibleForTesting
-        AmazonCloudWatch getCloudWatchClient() {
-            return cloudWatchClient;
+        /**
+         * Default constructor.
+         */
+        public Builder() {
         }
 
         /**
@@ -1202,6 +1115,104 @@ public class Worker implements Runnable {
         }
 
         /**
+         * Set the Worker config.
+         *
+         * @param config
+         *            Kinesis Client Library configuration
+         * @return A reference to this updated object so that method calls can be chained together.
+         */
+        public Builder config(KinesisClientLibConfiguration config) {
+            this.config = config;
+            return this;
+        }
+
+        /**
+         * Set the Kinesis client.
+         *
+         * @param kinesisClient
+         *            Kinesis Client used for fetching data
+         * @return A reference to this updated object so that method calls can be chained together.
+         */
+        public Builder kinesisClient(AmazonKinesis kinesisClient) {
+            this.kinesisClient = kinesisClient;
+            return this;
+        }
+
+        /**
+         * Set the DynamoDB client.
+         *
+         * @param dynamoDBClient
+         *            DynamoDB client used for checkpoints and tracking leases
+         * @return A reference to this updated object so that method calls can be chained together.
+         */
+        public Builder dynamoDBClient(AmazonDynamoDB dynamoDBClient) {
+            this.dynamoDBClient = dynamoDBClient;
+            return this;
+        }
+
+        /**
+         * Set the Cloudwatch client.
+         *
+         * @param cloudWatchClient
+         *            CloudWatch Client for publishing metrics
+         * @return A reference to this updated object so that method calls can be chained together.
+         */
+        public Builder cloudWatchClient(AmazonCloudWatch cloudWatchClient) {
+            this.cloudWatchClient = cloudWatchClient;
+            return this;
+        }
+
+        /**
+         * Set the metrics factory.
+         *
+         * @param metricsFactory
+         *            Metrics factory used to emit metrics
+         * @return A reference to this updated object so that method calls can be chained together.
+         */
+        public Builder metricsFactory(IMetricsFactory metricsFactory) {
+            this.metricsFactory = metricsFactory;
+            return this;
+        }
+
+        /**
+         * Set the executor service for processing records.
+         *
+         * @param execService
+         *            ExecutorService to use for processing records (support for multi-threaded consumption)
+         * @return A reference to this updated object so that method calls can be chained together.
+         */
+        public Builder execService(ExecutorService execService) {
+            this.execService = execService;
+            return this;
+        }
+
+        /**
+         * Provides logic how to prioritize shard processing.
+         * 
+         * @param shardPrioritization
+         *            shardPrioritization is responsible to order shards before processing
+         * 
+         * @return A reference to this updated object so that method calls can be chained together.
+         */
+        public Builder shardPrioritization(ShardPrioritization shardPrioritization) {
+            this.shardPrioritization = shardPrioritization;
+            return this;
+        }
+
+        /**
+         * Set KinesisProxy for the worker.
+         *
+         * @param kinesisProxy
+         *            Sets an implementation of IKinesisProxy.
+         *
+         * @return A reference to this updated object so that method calls can be chained together.
+         */
+        public Builder kinesisProxy(IKinesisProxy kinesisProxy) {
+            this.kinesisProxy = kinesisProxy;
+            return this;
+        }
+
+        /**
          * Build the Worker instance.
          *
          * @return a Worker instance.
@@ -1221,55 +1232,54 @@ public class Worker implements Runnable {
                 execService = getExecutorService();
             }
             if (kinesisClient == null) {
-                kinesisClient = createClient(AmazonKinesisClientBuilder.standard(),
-                        config.getKinesisCredentialsProvider(),
-                        config.getKinesisClientConfiguration(),
-                        config.getKinesisEndpoint(),
-                        config.getRegionName());
+                kinesisClient = new AmazonKinesisClient(config.getKinesisCredentialsProvider(),
+                        config.getKinesisClientConfiguration());
             }
             if (dynamoDBClient == null) {
-                dynamoDBClient = createClient(AmazonDynamoDBClientBuilder.standard(),
-                        config.getDynamoDBCredentialsProvider(),
-                        config.getDynamoDBClientConfiguration(),
-                        config.getDynamoDBEndpoint(),
-                        config.getRegionName());
+                dynamoDBClient = new AmazonDynamoDBClient(config.getDynamoDBCredentialsProvider(),
+                        config.getDynamoDBClientConfiguration());
             }
             if (cloudWatchClient == null) {
-                cloudWatchClient = createClient(AmazonCloudWatchClientBuilder.standard(),
-                        config.getCloudWatchCredentialsProvider(),
-                        config.getCloudWatchClientConfiguration(),
-                        null,
-                        config.getRegionName());
+                cloudWatchClient = new AmazonCloudWatchClient(config.getCloudWatchCredentialsProvider(),
+                        config.getCloudWatchClientConfiguration());
             }
             // If a region name was explicitly specified, use it as the region for Amazon Kinesis and Amazon DynamoDB.
             if (config.getRegionName() != null) {
-                setField(cloudWatchClient, "region", cloudWatchClient::setRegion, RegionUtils.getRegion(config.getRegionName()));
-                setField(kinesisClient, "region", kinesisClient::setRegion, RegionUtils.getRegion(config.getRegionName()));
-                setField(dynamoDBClient, "region", dynamoDBClient::setRegion, RegionUtils.getRegion(config.getRegionName()));
+                Region region = RegionUtils.getRegion(config.getRegionName());
+                cloudWatchClient.setRegion(region);
+                LOG.debug("The region of Amazon CloudWatch client has been set to " + config.getRegionName());
+                kinesisClient.setRegion(region);
+                LOG.debug("The region of Amazon Kinesis client has been set to " + config.getRegionName());
+                dynamoDBClient.setRegion(region);
+                LOG.debug("The region of Amazon DynamoDB client has been set to " + config.getRegionName());
             }
             // If a dynamoDB endpoint was explicitly specified, use it to set the DynamoDB endpoint.
             if (config.getDynamoDBEndpoint() != null) {
-                setField(dynamoDBClient, "endpoint", dynamoDBClient::setEndpoint, config.getDynamoDBEndpoint());
+                dynamoDBClient.setEndpoint(config.getDynamoDBEndpoint());
+                LOG.debug("The endpoint of Amazon DynamoDB client has been set to " + config.getDynamoDBEndpoint());
             }
             // If a kinesis endpoint was explicitly specified, use it to set the region of kinesis.
             if (config.getKinesisEndpoint() != null) {
-                setField(kinesisClient, "endpoint", kinesisClient::setEndpoint, config.getKinesisEndpoint());
+                kinesisClient.setEndpoint(config.getKinesisEndpoint());
+                if (config.getRegionName() != null) {
+                    LOG.warn("Received configuration for both region name as " + config.getRegionName()
+                            + ", and Amazon Kinesis endpoint as " + config.getKinesisEndpoint()
+                            + ". Amazon Kinesis endpoint will overwrite region name.");
+                    LOG.debug("The region of Amazon Kinesis client has been overwritten to "
+                            + config.getKinesisEndpoint());
+                } else {
+                    LOG.debug("The region of Amazon Kinesis client has been set to " + config.getKinesisEndpoint());
+                }
             }
             if (metricsFactory == null) {
                 metricsFactory = getMetricsFactory(cloudWatchClient, config);
-            }
-            if (leaseManager == null) {
-                leaseManager = new KinesisClientLeaseManager(config.getTableName(), dynamoDBClient);
             }
             if (shardPrioritization == null) {
                 shardPrioritization = new ParentsFirstShardPrioritization(1);
             }
             if (kinesisProxy == null) {
-                kinesisProxy = new KinesisProxy(config, kinesisClient);
-            }
-
-            if (workerStateChangeListener == null) {
-                workerStateChangeListener = DEFAULT_WORKER_STATE_CHANGE_LISTENER;
+                kinesisProxy = new KinesisProxyFactory(config.getKinesisCredentialsProvider(), kinesisClient)
+                    .getProxy(config.getStreamName());
             }
 
             return new Worker(config.getApplicationName(),
@@ -1286,7 +1296,8 @@ public class Worker implements Runnable {
                     config.getShardSyncIntervalMillis(),
                     config.shouldCleanupLeasesUponShardCompletion(),
                     null,
-                    new KinesisClientLibLeaseCoordinator(leaseManager,
+                    new KinesisClientLibLeaseCoordinator(new KinesisClientLeaseManager(config.getTableName(),
+                            dynamoDBClient),
                             config.getWorkerIdentifier(),
                             config.getFailoverTimeMillis(),
                             config.getEpsilonMillis(),
@@ -1303,33 +1314,9 @@ public class Worker implements Runnable {
                     config.getSkipShardSyncAtWorkerInitializationIfLeasesExist(),
                     shardPrioritization,
                     config.getRetryGetRecordsInSeconds(),
-                    config.getMaxGetRecordsThreadPool(),
-                    workerStateChangeListener);
+                    config.getMaxGetRecordsThreadPool());
+
         }
 
-        <R, T extends AwsClientBuilder<T, R>> R createClient(final T builder,
-                                                             final AWSCredentialsProvider credentialsProvider,
-                                                             final ClientConfiguration clientConfiguration,
-                                                             final String endpointUrl,
-                                                             final String region) {
-            if (credentialsProvider != null) {
-                builder.withCredentials(credentialsProvider);
-            }
-            if (clientConfiguration != null) {
-                builder.withClientConfiguration(clientConfiguration);
-            }
-            if (StringUtils.isNotEmpty(endpointUrl)) {
-                LOG.warn("Received configuration for endpoint as " + endpointUrl + ", and region as "
-                        + region + ".");
-                builder.withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(endpointUrl, region));
-            } else if (StringUtils.isNotEmpty(region)) {
-                LOG.warn("Received configuration for region as " + region + ".");
-                builder.withRegion(region);
-            } else {
-                LOG.warn("No configuration received for endpoint and region, will default region to us-east-1");
-                builder.withRegion(Regions.US_EAST_1);
-            }
-            return builder.build();
-        }
     }
 }

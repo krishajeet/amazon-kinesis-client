@@ -66,7 +66,6 @@ public class KinesisClientLibConfigurator {
                 Arrays.asList(new IntegerPropertyValueDecoder(),
                         new LongPropertyValueDecoder(),
                         new BooleanPropertyValueDecoder(),
-                        new DatePropertyValueDecoder(),
                         new AWSCredentialsProviderPropertyValueDecoder(),
                         new StringPropertyValueDecoder(),
                         new InitialPositionInStreamPropertyValueDecoder(),

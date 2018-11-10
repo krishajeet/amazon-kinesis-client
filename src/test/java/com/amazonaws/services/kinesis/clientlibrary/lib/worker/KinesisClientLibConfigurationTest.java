@@ -268,8 +268,8 @@ public class KinesisClientLibConfigurationTest {
         IRecordProcessorFactory processorFactory = Mockito.mock(IRecordProcessorFactory.class);
         new Worker(processorFactory, kclConfig);
 
-        Mockito.verify(kclConfig, Mockito.times(5)).getRegionName();
-        Mockito.verify(kclConfig, Mockito.times(2)).getKinesisEndpoint();
+        Mockito.verify(kclConfig, Mockito.times(9)).getRegionName();
+        Mockito.verify(kclConfig, Mockito.times(4)).getKinesisEndpoint();
 
         kclConfig = Mockito.spy(
                 new KinesisClientLibConfiguration("Test", "Test", credentialsProvider, "0")
@@ -277,11 +277,60 @@ public class KinesisClientLibConfigurationTest {
 
         new Worker(processorFactory, kclConfig);
 
-        Mockito.verify(kclConfig, Mockito.times(2)).getRegionName();
-        Mockito.verify(kclConfig, Mockito.times(2)).getKinesisEndpoint();
+        Mockito.verify(kclConfig, Mockito.times(3)).getRegionName();
+        Mockito.verify(kclConfig, Mockito.times(3)).getKinesisEndpoint();
     }
 
+    @Test
+    public void testKCLConfigurationWithMultiRegionWithIlligalRegionName() {
+        // test with illegal region name
+        AWSCredentialsProvider credentialsProvider = Mockito.mock(AWSCredentialsProvider.class);
 
+        KinesisClientLibConfiguration kclConfig =
+                new KinesisClientLibConfiguration("Test", "Test", credentialsProvider, "0");
+        try {
+            kclConfig = kclConfig.withRegionName("abcd");
+            Assert.fail("No expected Exception is thrown.");
+        } catch (IllegalArgumentException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    @Test
+    public void testKCLConfigurationWithMultiRegionWithIlligalRegionNameInFullConstructor() {
+        // test with illegal region name
+        Mockito.mock(AWSCredentialsProvider.class);
+        try {
+            new KinesisClientLibConfiguration(TEST_STRING,
+                    TEST_STRING,
+                    TEST_STRING,
+                    TEST_STRING,
+                    null,
+                    null,
+                    null,
+                    null,
+                    TEST_VALUE_LONG,
+                    TEST_STRING,
+                    3,
+                    TEST_VALUE_LONG,
+                    false,
+                    TEST_VALUE_LONG,
+                    TEST_VALUE_LONG,
+                    true,
+                    new ClientConfiguration(),
+                    new ClientConfiguration(),
+                    new ClientConfiguration(),
+                    TEST_VALUE_LONG,
+                    TEST_VALUE_LONG,
+                    1,
+                    skipCheckpointValidationValue,
+                    "abcd",
+                    TEST_VALUE_LONG);
+            Assert.fail("No expected Exception is thrown.");
+        } catch(IllegalArgumentException e) {
+            System.out.println(e.getMessage());
+        }
+    }
 
     @Test
     public void testKCLConfigurationMetricsDefaults() {

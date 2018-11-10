@@ -18,7 +18,7 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.Set;
 
-import org.apache.commons.lang3.Validate;
+import org.apache.commons.lang.Validate;
 
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.AWSCredentialsProvider;
@@ -126,7 +126,7 @@ public class KinesisClientLibConfiguration {
     /**
      * User agent set when Amazon Kinesis Client Library makes AWS requests.
      */
-    public static final String KINESIS_CLIENT_LIB_USER_AGENT = "amazon-kinesis-client-library-java-1.9.3";
+    public static final String KINESIS_CLIENT_LIB_USER_AGENT = "amazon-kinesis-client-library-java-1.8.10";
 
     /**
      * KCL will validate client provided sequence numbers with a call to Amazon Kinesis before checkpointing for calls
@@ -181,16 +181,6 @@ public class KinesisClientLibConfiguration {
      * The size of the thread pool to create for the lease renewer to use.
      */
     public static final int DEFAULT_MAX_LEASE_RENEWAL_THREADS = 20;
-
-    /**
-     * The sleep time between two listShards calls from the proxy when throttled.
-     */
-    public static final long DEFAULT_LIST_SHARDS_BACKOFF_TIME_IN_MILLIS = 1500;
-
-    /**
-     * The number of times the Proxy will retry listShards call when throttled.
-     */
-    public static final int DEFAULT_MAX_LIST_SHARDS_RETRY_ATTEMPTS = 50;
 
     private String applicationName;
     private String tableName;
@@ -248,12 +238,6 @@ public class KinesisClientLibConfiguration {
     
     @Getter
     private Optional<Long> logWarningForTaskAfterMillis = Optional.empty();
-    
-    @Getter
-    private long listShardsBackoffTimeInMillis = DEFAULT_LIST_SHARDS_BACKOFF_TIME_IN_MILLIS;
-    
-    @Getter
-    private int maxListShardsRetryAttempts = DEFAULT_MAX_LIST_SHARDS_RETRY_ATTEMPTS;
 
     /**
      * Constructor.
@@ -458,6 +442,7 @@ public class KinesisClientLibConfiguration {
         checkIsValuePositive("MetricsBufferTimeMills", metricsBufferTimeMillis);
         checkIsValuePositive("MetricsMaxQueueSize", (long) metricsMaxQueueSize);
         checkIsValuePositive("ShutdownGraceMillis", shutdownGraceMillis);
+        checkIsRegionNameValid(regionName);
         this.applicationName = applicationName;
         this.tableName = applicationName;
         this.streamName = streamName;
@@ -566,6 +551,7 @@ public class KinesisClientLibConfiguration {
         checkIsValuePositive("TaskBackoffTimeMillis", taskBackoffTimeMillis);
         checkIsValuePositive("MetricsBufferTimeMills", metricsBufferTimeMillis);
         checkIsValuePositive("MetricsMaxQueueSize", (long) metricsMaxQueueSize);
+        checkIsRegionNameValid(regionName);
         this.applicationName = applicationName;
         this.tableName = applicationName;
         this.streamName = streamName;
@@ -626,6 +612,12 @@ public class KinesisClientLibConfiguration {
         }
         config.setUserAgent(existingUserAgent);
         return config;
+    }
+
+    private void checkIsRegionNameValid(String regionNameToCheck) {
+        if (regionNameToCheck != null && RegionUtils.getRegion(regionNameToCheck) == null) {
+            throw new IllegalArgumentException("The specified region name is not valid");
+        }
     }
 
     /**
@@ -1206,6 +1198,7 @@ public class KinesisClientLibConfiguration {
      */
     // CHECKSTYLE:IGNORE HiddenFieldCheck FOR NEXT 2 LINES
     public KinesisClientLibConfiguration withRegionName(String regionName) {
+        checkIsRegionNameValid(regionName);
         this.regionName = regionName;
         return this;
     }
@@ -1392,28 +1385,6 @@ public class KinesisClientLibConfiguration {
     public KinesisClientLibConfiguration withLogWarningForTaskAfterMillis(long logWarningForTaskAfterMillis) {
         checkIsValuePositive("LogProcessTaskStatusAfterInMillis", logWarningForTaskAfterMillis);
         this.logWarningForTaskAfterMillis = Optional.of(logWarningForTaskAfterMillis);
-        return this;
-    }
-
-    /**
-     * @param listShardsBackoffTimeInMillis Max sleep between two listShards call when throttled
-     *                                     in {@link com.amazonaws.services.kinesis.clientlibrary.proxies.KinesisProxy}.
-     * @return
-     */
-    public KinesisClientLibConfiguration withListShardsBackoffTimeInMillis(long listShardsBackoffTimeInMillis) {
-        checkIsValuePositive("listShardsBackoffTimeInMillis", listShardsBackoffTimeInMillis);
-        this.listShardsBackoffTimeInMillis = listShardsBackoffTimeInMillis;
-        return this;
-    }
-
-    /**
-     * @param maxListShardsRetryAttempts Max number of retries for listShards when throttled
-     *                                   in {@link com.amazonaws.services.kinesis.clientlibrary.proxies.KinesisProxy}.
-     * @return
-     */
-    public KinesisClientLibConfiguration withMaxListShardsRetryAttempts(int maxListShardsRetryAttempts) {
-        checkIsValuePositive("maxListShardsRetryAttempts", maxListShardsRetryAttempts);
-        this.maxListShardsRetryAttempts = maxListShardsRetryAttempts;
         return this;
     }
 }

@@ -70,14 +70,12 @@ public class SequenceNumberValidator {
      */
     void validateSequenceNumber(String sequenceNumber)
         throws IllegalArgumentException, ThrottlingException, KinesisClientLibDependencyException {
-        boolean atShardEnd = ExtendedSequenceNumber.SHARD_END.getSequenceNumber().equals(sequenceNumber);
-
-        if (!atShardEnd && !isDigits(sequenceNumber)) {
+        if (!isDigits(sequenceNumber)) {
             LOG.info("Sequence number must be numeric, but was " + sequenceNumber);
             throw new IllegalArgumentException("Sequence number must be numeric, but was " + sequenceNumber);
         }
         try {
-            if (!atShardEnd &&validateWithGetIterator) {
+            if (validateWithGetIterator) {
                 proxy.getIterator(shardId, ShardIteratorType.AFTER_SEQUENCE_NUMBER.toString(), sequenceNumber);
                 LOG.info("Validated sequence number " + sequenceNumber + " with shard id " + shardId);
             }

@@ -19,12 +19,9 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.isA;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyLong;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.argThat;
 import static org.mockito.Matchers.eq;
@@ -77,24 +74,14 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
 import org.mockito.Mock;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.mockito.stubbing.Answer;
 
-import com.amazonaws.ClientConfiguration;
-import com.amazonaws.client.builder.AwsClientBuilder;
-import com.amazonaws.regions.RegionUtils;
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.cloudwatch.AmazonCloudWatch;
-import com.amazonaws.services.cloudwatch.AmazonCloudWatchClientBuilder;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.dynamodbv2.local.embedded.DynamoDBEmbedded;
-import com.amazonaws.services.kinesis.AmazonKinesis;
-import com.amazonaws.services.kinesis.AmazonKinesisClientBuilder;
 import com.amazonaws.services.kinesis.clientlibrary.exceptions.KinesisClientLibNonRetryableException;
 import com.amazonaws.services.kinesis.clientlibrary.interfaces.ICheckpoint;
 import com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorCheckpointer;
@@ -102,10 +89,9 @@ import com.amazonaws.services.kinesis.clientlibrary.interfaces.v2.IRecordProcess
 import com.amazonaws.services.kinesis.clientlibrary.interfaces.v2.IRecordProcessorFactory;
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.Worker.WorkerCWMetricsFactory;
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.Worker.WorkerThreadPoolExecutor;
-import com.amazonaws.services.kinesis.clientlibrary.lib.worker.WorkerStateChangeListener.WorkerState;
 import com.amazonaws.services.kinesis.clientlibrary.proxies.IKinesisProxy;
-import com.amazonaws.services.kinesis.clientlibrary.proxies.KinesisLocalFileProxy;
 import com.amazonaws.services.kinesis.clientlibrary.proxies.KinesisProxy;
+import com.amazonaws.services.kinesis.clientlibrary.proxies.KinesisLocalFileProxy;
 import com.amazonaws.services.kinesis.clientlibrary.proxies.util.KinesisLocalFileDataCreator;
 import com.amazonaws.services.kinesis.clientlibrary.types.ExtendedSequenceNumber;
 import com.amazonaws.services.kinesis.clientlibrary.types.InitializationInput;
@@ -156,7 +142,7 @@ public class WorkerTest {
 
     private static final String KINESIS_SHARD_ID_FORMAT = "kinesis-0-0-%d";
     private static final String CONCURRENCY_TOKEN_FORMAT = "testToken-%d";
-
+    
     private RecordsFetcherFactory recordsFetcherFactory;
     private KinesisClientLibConfiguration config;
 
@@ -184,9 +170,7 @@ public class WorkerTest {
     private Future<TaskResult> taskFuture;
     @Mock
     private TaskResult taskResult;
-    @Mock
-    private WorkerStateChangeListener workerStateChangeListener;
-
+    
     @Before
     public void setup() {
         config = spy(new KinesisClientLibConfiguration("app", null, null, null));
@@ -195,7 +179,7 @@ public class WorkerTest {
     }
 
     // CHECKSTYLE:IGNORE AnonInnerLengthCheck FOR NEXT 50 LINES
-    private static final com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory SAMPLE_RECORD_PROCESSOR_FACTORY =
+    private static final com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory SAMPLE_RECORD_PROCESSOR_FACTORY = 
             new com.amazonaws.services.kinesis.clientlibrary.interfaces.IRecordProcessorFactory() {
 
         @Override
@@ -228,8 +212,8 @@ public class WorkerTest {
             };
         }
     };
-
-    private static final IRecordProcessorFactory SAMPLE_RECORD_PROCESSOR_FACTORY_V2 =
+    
+    private static final IRecordProcessorFactory SAMPLE_RECORD_PROCESSOR_FACTORY_V2 = 
             new V1ToV2RecordProcessorFactoryAdapter(SAMPLE_RECORD_PROCESSOR_FACTORY);
 
 
@@ -635,7 +619,7 @@ public class WorkerTest {
                 return null;
             }
         }).when(v2RecordProcessor).processRecords(any(ProcessRecordsInput.class));
-
+        
         RecordsFetcherFactory recordsFetcherFactory = mock(RecordsFetcherFactory.class);
         GetRecordsCache getRecordsCache = mock(GetRecordsCache.class);
         when(config.getRecordsFetcherFactory()).thenReturn(recordsFetcherFactory);
@@ -675,7 +659,7 @@ public class WorkerTest {
      * This test is testing the {@link Worker}'s shutdown behavior and by extension the behavior of
      * {@link ThreadPoolExecutor#shutdownNow()}. It depends on the thread pool sending an interrupt to the pool threads.
      * This behavior makes the test a bit racy, since we need to ensure a specific order of events.
-     *
+     * 
      * @throws Exception
      */
     @Test
@@ -1372,7 +1356,7 @@ public class WorkerTest {
                 executorService,
                 metricsFactory,
                 taskBackoffTimeMillis,
-                failoverTimeMillis,
+                failoverTimeMillis, 
                 false,
                 shardPrioritization);
 
@@ -1448,7 +1432,7 @@ public class WorkerTest {
                 config,
                 streamConfig,
                 INITIAL_POSITION_TRIM_HORIZON,
-                parentShardPollIntervalMillis,
+                parentShardPollIntervalMillis, 
                 shardSyncIntervalMillis,
                 cleanupLeasesUponShardCompletion,
                 leaseCoordinator,
@@ -1514,250 +1498,6 @@ public class WorkerTest {
             .build();
         Assert.assertNotNull(worker.getStreamConfig().getStreamProxy());
         Assert.assertTrue(worker.getStreamConfig().getStreamProxy() instanceof KinesisLocalFileProxy);
-    }
-
-    @Test
-    public void testBuilderForWorkerStateListener() {
-        IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-        Worker worker = new Worker.Builder()
-                .recordProcessorFactory(recordProcessorFactory)
-                .config(config)
-                .build();
-        Assert.assertTrue(worker.getWorkerStateChangeListener() instanceof NoOpWorkerStateChangeListener);
-    }
-
-    @Test
-    public void testBuilderWhenWorkerStateListenerIsSet() {
-        IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-        Worker worker = new Worker.Builder()
-                .recordProcessorFactory(recordProcessorFactory)
-                .workerStateChangeListener(workerStateChangeListener)
-                .config(config)
-                .build();
-        Assert.assertSame(workerStateChangeListener, worker.getWorkerStateChangeListener());
-    }
-
-    @Test
-    public void testWorkerStateListenerStatePassesThroughCreatedState() {
-        IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-        new Worker.Builder()
-                .recordProcessorFactory(recordProcessorFactory)
-                .workerStateChangeListener(workerStateChangeListener)
-                .config(config)
-                .build();
-
-        verify(workerStateChangeListener, times(1)).onWorkerStateChange(eq(WorkerState.CREATED));
-    }
-
-    @Test
-    public void testWorkerStateChangeListenerGoesThroughStates() throws Exception {
-
-        final CountDownLatch workerInitialized = new CountDownLatch(1);
-        final CountDownLatch workerStarted = new CountDownLatch(1);
-        final IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-        final IRecordProcessor processor = mock(IRecordProcessor.class);
-
-        ExtendedSequenceNumber checkpoint = new ExtendedSequenceNumber("123", 0L);
-        KinesisClientLeaseBuilder builder = new KinesisClientLeaseBuilder().withCheckpoint(checkpoint)
-                .withConcurrencyToken(UUID.randomUUID()).withLastCounterIncrementNanos(0L).withLeaseCounter(0L)
-                .withOwnerSwitchesSinceCheckpoint(0L).withLeaseOwner("Self");
-        final List<KinesisClientLease> leases = new ArrayList<>();
-        KinesisClientLease lease = builder.withLeaseKey(String.format("shardId-%03d", 1)).build();
-        leases.add(lease);
-
-        doAnswer(new Answer<Boolean>() {
-            @Override
-            public Boolean answer(InvocationOnMock invocation) throws Throwable {
-                workerInitialized.countDown();
-                return true;
-            }
-        }).when(leaseManager).waitUntilLeaseTableExists(anyLong(), anyLong());
-        doAnswer(new Answer<IRecordProcessor>() {
-            @Override
-            public IRecordProcessor answer(InvocationOnMock invocation) throws Throwable {
-                workerStarted.countDown();
-                return processor;
-            }
-        }).when(recordProcessorFactory).createProcessor();
-
-        when(config.getWorkerIdentifier()).thenReturn("Self");
-        when(leaseManager.listLeases()).thenReturn(leases);
-        when(leaseManager.renewLease(leases.get(0))).thenReturn(true);
-        when(executorService.submit(Matchers.<Callable<TaskResult>> any()))
-                .thenAnswer(new ShutdownHandlingAnswer(taskFuture));
-        when(taskFuture.isDone()).thenReturn(true);
-        when(taskFuture.get()).thenReturn(taskResult);
-        when(taskResult.isShardEndReached()).thenReturn(true);
-
-        Worker worker = new Worker.Builder()
-                .recordProcessorFactory(recordProcessorFactory)
-                .config(config)
-                .leaseManager(leaseManager)
-                .kinesisProxy(kinesisProxy)
-                .execService(executorService)
-                .workerStateChangeListener(workerStateChangeListener)
-                .build();
-
-        verify(workerStateChangeListener, times(1)).onWorkerStateChange(eq(WorkerState.CREATED));
-
-        WorkerThread workerThread = new WorkerThread(worker);
-        workerThread.start();
-
-        workerInitialized.await();
-        verify(workerStateChangeListener, times(1)).onWorkerStateChange(eq(WorkerState.INITIALIZING));
-
-        workerStarted.await();
-        verify(workerStateChangeListener, times(1)).onWorkerStateChange(eq(WorkerState.STARTED));
-
-        boolean workerShutdown = worker.createGracefulShutdownCallable()
-                .call();
-
-        verify(workerStateChangeListener, times(1)).onWorkerStateChange(eq(WorkerState.SHUT_DOWN));
-    }
-
-    @Test
-    public void testBuilderWithDefaultLeaseManager()  {
-        IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-
-        Worker worker = new Worker.Builder()
-                .recordProcessorFactory(recordProcessorFactory)
-                .config(config)
-                .build();
-
-        Assert.assertNotNull(worker.getLeaseCoordinator().getLeaseManager());
-    }
-
-    @SuppressWarnings("unchecked")
-    @Test
-    public void testBuilderWhenLeaseManagerIsSet()  {
-        IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-        // Create an instance of ILeaseManager for injection and validation
-        ILeaseManager<KinesisClientLease> leaseManager = (ILeaseManager<KinesisClientLease>) mock(ILeaseManager.class);
-        Worker worker = new Worker.Builder()
-                .recordProcessorFactory(recordProcessorFactory)
-                .config(config)
-                .leaseManager(leaseManager)
-                .build();
-
-        Assert.assertSame(leaseManager, worker.getLeaseCoordinator().getLeaseManager());
-    }
-
-    @Test
-    public void testBuilderSetRegionAndEndpointToClient() {
-        IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-        final String endpoint = "TestEndpoint";
-        KinesisClientLibConfiguration config = new KinesisClientLibConfiguration("TestApp", null, null, null)
-                .withRegionName(Regions.US_WEST_2.getName())
-                .withKinesisEndpoint(endpoint)
-                .withDynamoDBEndpoint(endpoint);
-
-        AmazonKinesis kinesisClient = spy(AmazonKinesisClientBuilder.standard().withRegion(Regions.US_WEST_2).build());
-        AmazonDynamoDB dynamoDBClient = spy(AmazonDynamoDBClientBuilder.standard().withRegion(Regions.US_WEST_2).build());
-        AmazonCloudWatch cloudWatchClient = spy(AmazonCloudWatchClientBuilder.standard().withRegion(Regions.US_WEST_2).build());
-
-        new Worker.Builder().recordProcessorFactory(recordProcessorFactory).config(config)
-                .kinesisClient(kinesisClient)
-                .dynamoDBClient(dynamoDBClient)
-                .cloudWatchClient(cloudWatchClient)
-                .build();
-
-        verify(kinesisClient, times(1)).setRegion(eq(RegionUtils.getRegion(config.getRegionName())));
-        verify(dynamoDBClient, times(1)).setRegion(eq(RegionUtils.getRegion(config.getRegionName())));
-        verify(cloudWatchClient, times(2)).setRegion(eq(RegionUtils.getRegion(config.getRegionName())));
-
-        verify(kinesisClient, times(1)).setEndpoint(eq(endpoint));
-        verify(dynamoDBClient, times(1)).setEndpoint(eq(endpoint));
-        verify(cloudWatchClient, never()).setEndpoint(anyString());
-    }
-
-    @Test
-    public void testBuilderSetRegionToClient() {
-        IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-        String region = Regions.US_WEST_2.getName();
-        KinesisClientLibConfiguration config = new KinesisClientLibConfiguration("TestApp", null, null, null)
-                .withRegionName(region);
-
-        Worker.Builder builder = new Worker.Builder();
-
-        AmazonKinesis kinesisClient = spy(AmazonKinesisClientBuilder.standard().withRegion(Regions.US_WEST_2).build());
-        AmazonDynamoDB dynamoDBClient = spy(AmazonDynamoDBClientBuilder.standard().withRegion(Regions.US_WEST_2).build());
-        AmazonCloudWatch cloudWatchClient = spy(AmazonCloudWatchClientBuilder.standard().withRegion(Regions.US_WEST_2).build());
-
-        builder.recordProcessorFactory(recordProcessorFactory).config(config)
-                .kinesisClient(kinesisClient)
-                .dynamoDBClient(dynamoDBClient)
-                .cloudWatchClient(cloudWatchClient)
-                .build();
-
-        verify(kinesisClient, times(1)).setRegion(eq(RegionUtils.getRegion(config.getRegionName())));
-        verify(dynamoDBClient, times(1)).setRegion(eq(RegionUtils.getRegion(config.getRegionName())));
-        verify(cloudWatchClient, times(2)).setRegion(eq(RegionUtils.getRegion(config.getRegionName())));
-
-        verify(kinesisClient, never()).setEndpoint(any());
-        verify(dynamoDBClient, never()).setEndpoint(any());
-        verify(cloudWatchClient, never()).setEndpoint(any());
-    }
-
-    @Test
-    public void testBuilderGenerateClients() {
-        IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-        KinesisClientLibConfiguration config = new KinesisClientLibConfiguration("TestApp", null, null, null);
-        Worker.Builder builder = spy(new Worker.Builder().recordProcessorFactory(recordProcessorFactory).config(config));
-        ArgumentCaptor<AwsClientBuilder> builderCaptor = ArgumentCaptor.forClass(AwsClientBuilder.class);
-
-        assertNull(builder.getKinesisClient());
-        assertNull(builder.getDynamoDBClient());
-        assertNull(builder.getCloudWatchClient());
-
-        builder.build();
-
-        assertTrue(builder.getKinesisClient() instanceof AmazonKinesis);
-        assertTrue(builder.getDynamoDBClient() instanceof AmazonDynamoDB);
-        assertTrue(builder.getCloudWatchClient() instanceof AmazonCloudWatch);
-
-        verify(builder, times(3)).createClient(
-                builderCaptor.capture(), eq(null), any(ClientConfiguration.class), eq(null), eq(null));
-
-        builderCaptor.getAllValues().forEach(clientBuilder -> {
-            assertTrue(clientBuilder.getRegion().equals(Regions.US_EAST_1.getName()));
-        });
-    }
-
-    @Test
-    public void testBuilderGenerateClientsWithRegion() {
-        IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-        String region = Regions.US_WEST_2.getName();
-        KinesisClientLibConfiguration config = new KinesisClientLibConfiguration("TestApp", null, null, null)
-                .withRegionName(region);
-        ArgumentCaptor<AwsClientBuilder> builderCaptor = ArgumentCaptor.forClass(AwsClientBuilder.class);
-
-        Worker.Builder builder = spy(new Worker.Builder());
-
-        builder.recordProcessorFactory(recordProcessorFactory).config(config).build();
-
-        verify(builder, times(3)).createClient(
-                builderCaptor.capture(), eq(null), any(ClientConfiguration.class), eq(null), eq(region));
-        builderCaptor.getAllValues().forEach(clientBuilder -> {
-            assertTrue(clientBuilder.getRegion().equals(region));
-        });
-    }
-
-    @Test
-    public void testBuilderGenerateClientsWithEndpoint() {
-        IRecordProcessorFactory recordProcessorFactory = mock(IRecordProcessorFactory.class);
-        String region = Regions.US_WEST_2.getName();
-        String endpointUrl = "TestEndpoint";
-        KinesisClientLibConfiguration config = new KinesisClientLibConfiguration("TestApp", null, null, null)
-                .withRegionName(region).withKinesisEndpoint(endpointUrl).withDynamoDBEndpoint(endpointUrl);
-
-        Worker.Builder builder = spy(new Worker.Builder());
-
-        builder.recordProcessorFactory(recordProcessorFactory).config(config).build();
-
-        verify(builder, times(2)).createClient(
-                any(AwsClientBuilder.class), eq(null), any(ClientConfiguration.class), eq(endpointUrl), eq(region));
-        verify(builder, times(1)).createClient(
-                any(AwsClientBuilder.class), eq(null), any(ClientConfiguration.class), eq(null), eq(region));
     }
 
     private abstract class InjectableWorker extends Worker {
@@ -2034,7 +1774,7 @@ public class WorkerTest {
         TestStreamletFactory recordProcessorFactory = new TestStreamletFactory(recordCounter, shardSequenceVerifier);
 
         ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
-
+        
         WorkerThread workerThread = runWorker(
                 shardList, initialLeases, callProcessRecordsForEmptyRecordList, failoverTimeMillis,
                 numberOfRecordsPerShard, fileBasedProxy, recordProcessorFactory, executorService, nullMetricsFactory, clientConfig);
@@ -2090,7 +1830,7 @@ public class WorkerTest {
                 idleTimeInMilliseconds,
                 callProcessRecordsForEmptyRecordList,
                 skipCheckpointValidationValue, InitialPositionInStreamExtended.newInitialPositionAtTimestamp(timestamp));
-
+        
         Worker worker =
                 new Worker(stageName,
                         recordProcessorFactory,
@@ -2107,7 +1847,7 @@ public class WorkerTest {
                         failoverTimeMillis,
                         KinesisClientLibConfiguration.DEFAULT_SKIP_SHARD_SYNC_AT_STARTUP_IF_LEASES_EXIST,
                         shardPrioritization);
-
+        
         WorkerThread workerThread = new WorkerThread(worker);
         workerThread.start();
         return workerThread;
